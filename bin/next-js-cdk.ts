@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
-import { NextJsCdkStack } from '../lib/next-js-cdk-stack';
+import { NextJsCdkStack } from '../lib';
 
 const app = new cdk.App();
 new NextJsCdkStack(app, 'NextJsCdkStack', {

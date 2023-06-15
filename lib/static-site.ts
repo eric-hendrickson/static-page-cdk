@@ -6,7 +6,7 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as cloudfront_origins from 'aws-cdk-lib/aws-cloudfront-origins';
-import { CfnOutput, Duration, RemovalPolicy, Stack } from 'aws-cdk-lib';
+import { CfnOutput, Duration, NestedStack, RemovalPolicy, Stack } from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 
@@ -61,14 +61,24 @@ export class StaticSite extends Construct {
     }));
     new CfnOutput(this, 'Bucket', { value: siteBucket.bucketName });
 
+    // TLS certificate stack (note that a new stack must be created if not in us-east-1)
+    const certificateStack = Stack.of(this).region == 'us-east-1' ?
+      Stack.of(this)
+      : new Stack(this, 'CertificateStack', {
+        env: {
+          region: 'us-east-1',
+          account: Stack.of(this).account,
+        },
+        crossRegionReferences: true,
+      });
+    new CfnOutput(this, 'Stack', { value: certificateStack.stackName })
+
     // TLS certificate
-    const certificate = new acm.DnsValidatedCertificate(this, 'SiteCertificate', {
+    const certificate = new acm.Certificate(certificateStack, 'Certificate', {
       domainName: siteDomain,
-      hostedZone: zone,
-      region: 'us-east-1', // Cloudfront only checks this region for certificates.
+      validation: acm.CertificateValidation.fromDns(zone),
     });
     new CfnOutput(this, 'Certificate', { value: certificate.certificateArn });
-
     
     // CloudFront distribution
     const distribution = new cloudfront.Distribution(this, 'SiteDistribution', {
@@ -102,11 +112,11 @@ export class StaticSite extends Construct {
     });
 
     // Deploy site contents to S3 bucket
-    new s3deploy.BucketDeployment(this, 'DeployWithInvalidation', {
-      sources: [s3deploy.Source.asset('./site-contents')],
-      destinationBucket: siteBucket,
-      distribution,
-      distributionPaths: ['/*'],
-    });
+    // new s3deploy.BucketDeployment(this, 'DeployWithInvalidation', {
+    //   sources: [s3deploy.Source.asset('./site-contents')],
+    //   destinationBucket: siteBucket,
+    //   distribution,
+    //   distributionPaths: ['/*'],
+    // });
   }
 }

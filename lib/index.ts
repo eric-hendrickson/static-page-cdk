@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { StaticSite } from './static-site';
+require('dotenv').config();
 
 /**
  * This stack relies on getting the domain name from CDK context.
@@ -19,10 +20,12 @@ export class NextJsCdkStack extends cdk.Stack {
     super(scope, id, props);
 
     // The code that defines your stack goes here
+    const domainName = process.env.DOMAIN ? process.env.DOMAIN : '';
+    const siteSubDomain = process.env.SUBDOMAIN ? process.env.SUBDOMAIN : '';
 
     new StaticSite(this, 'StaticSite', {
-      domainName: this.node.tryGetContext('domain'),
-      siteSubDomain: this.node.tryGetContext('subdomain')
+      domainName,
+      siteSubDomain
     })
   }
 }

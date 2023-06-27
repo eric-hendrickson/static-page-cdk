@@ -22,10 +22,14 @@ export class NextJsCdkStack extends cdk.Stack {
     // The code that defines your stack goes here
     const domainName = process.env.DOMAIN ? process.env.DOMAIN : '';
     const siteSubDomain = process.env.SUBDOMAIN ? process.env.SUBDOMAIN : '';
+    const owner = process.env.GITHUB_OWNER ? process.env.GITHUB_OWNER : '';
+    const repo = process.env.GITHUB_REPO ? process.env.GITHUB_REPO : '';
 
     new StaticSite(this, 'StaticSite', {
       domainName,
-      siteSubDomain
+      siteSubDomain,
+      owner,
+      repo
     })
   }
 }

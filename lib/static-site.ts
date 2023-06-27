@@ -3,16 +3,20 @@ import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
-import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as cloudfront_origins from 'aws-cdk-lib/aws-cloudfront-origins';
-import { CfnOutput, Duration, NestedStack, RemovalPolicy, Stack } from 'aws-cdk-lib';
+import { CfnOutput, Duration, RemovalPolicy, Stack } from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
+import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
+import * as codebuild from 'aws-cdk-lib/aws-codebuild';
+import * as codepipelineActions from 'aws-cdk-lib/aws-codepipeline-actions';
 
 export interface StaticSiteProps {
   domainName: string;
   siteSubDomain: string;
+  owner: string;
+  repo: string;
 }
 
 /**
@@ -111,12 +115,50 @@ export class StaticSite extends Construct {
       zone
     });
 
-    // Deploy site contents to S3 bucket
-    // new s3deploy.BucketDeployment(this, 'DeployWithInvalidation', {
-    //   sources: [s3deploy.Source.asset('./site-contents')],
-    //   destinationBucket: siteBucket,
-    //   distribution,
-    //   distributionPaths: ['/*'],
-    // });
+    // AWS CodePipeline pipeline
+    const pipeline = new codepipeline.Pipeline(this, "Pipeline", {
+      pipelineName: "Website",
+    });
+
+    // Build
+    const project = new codebuild.Project(this, 'FrontEndBuild', {
+      source: codebuild.Source.gitHub({
+        owner: props.owner, 
+        repo: props.repo
+      }),
+      buildSpec: codebuild.BuildSpec.fromSourceFilename('./buildspec.yaml'),
+      environment: {
+        buildImage: codebuild.LinuxBuildImage.STANDARD_5_0,
+        privileged: true
+      },
+      environmentVariables: {
+        tag: {
+          value: 'cdk'
+        }
+      }
+    });
+
+    const buildInput = new codepipeline.Artifact();
+    const buildOutput = new codepipeline.Artifact();
+    const buildAction = new codepipelineActions.CodeBuildAction({
+      actionName: 'CodeBuild',
+      project,
+      input: buildInput,
+      outputs: [buildOutput]
+    });
+    pipeline.addStage({
+      stageName: 'Build',
+      actions: [buildAction],
+    });
+
+    const deployAction = new codepipelineActions.S3DeployAction({
+      actionName: 'S3Deploy',
+      bucket: siteBucket,
+      input: buildOutput
+    });
+    pipeline.addStage({
+      stageName: 'Deploy',
+      actions: [deployAction]
+    });
   }
 }

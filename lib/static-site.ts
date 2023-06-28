@@ -5,7 +5,7 @@ import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as cloudfront_origins from 'aws-cdk-lib/aws-cloudfront-origins';
-import { CfnOutput, Duration, RemovalPolicy, Stack } from 'aws-cdk-lib';
+import { CfnOutput, Duration, RemovalPolicy, SecretValue, Stack } from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
@@ -116,8 +116,8 @@ export class StaticSite extends Construct {
     });
 
     // AWS CodePipeline pipeline
-    const pipeline = new codepipeline.Pipeline(this, "Pipeline", {
-      pipelineName: "Website",
+    const pipeline = new codepipeline.Pipeline(this, "SitePipeline", {
+      pipelineName: props.domainName,
     });
 
     // Build
@@ -138,12 +138,24 @@ export class StaticSite extends Construct {
       }
     });
 
-    const buildInput = new codepipeline.Artifact();
+    const sourceOutput = new codepipeline.Artifact();
+    const sourceAction = new codepipelineActions.GitHubSourceAction({
+      actionName: 'GithubSource',
+      output: sourceOutput,
+      owner: props.owner,
+      repo: props.repo,
+      oauthToken: SecretValue.secretsManager('github-oauth-token'),
+    });
+    pipeline.addStage({
+      stageName: 'Source',
+      actions: [sourceAction]
+    });
+
     const buildOutput = new codepipeline.Artifact();
     const buildAction = new codepipelineActions.CodeBuildAction({
       actionName: 'CodeBuild',
       project,
-      input: buildInput,
+      input: sourceOutput,
       outputs: [buildOutput]
     });
     pipeline.addStage({
@@ -160,5 +172,7 @@ export class StaticSite extends Construct {
       stageName: 'Deploy',
       actions: [deployAction]
     });
+
+    new CfnOutput(this, 'Pipeline', { value: pipeline.pipelineName });
   }
 }

@@ -21,15 +21,17 @@ export class NextJsCdkStack extends cdk.Stack {
 
     // The code that defines your stack goes here
     const domainName = process.env.DOMAIN ? process.env.DOMAIN : '';
-    const siteSubDomain = process.env.SUBDOMAIN ? process.env.SUBDOMAIN : '';
     const owner = process.env.GITHUB_OWNER ? process.env.GITHUB_OWNER : '';
     const repo = process.env.GITHUB_REPO ? process.env.GITHUB_REPO : '';
+    const sesRegion = process.env.SES_REGION ? process.env.SES_REGION : process.env.CDK_DEFAULT_REGION;
+    const sesEmailAddress = process.env.SES_EMAIL_ADDRESS ? process.env.SES_EMAIL_ADDRESS : '';
 
     new StaticSite(this, 'StaticSite', {
       domainName,
-      siteSubDomain,
       owner,
-      repo
+      repo,
+      sesRegion,
+      sesEmailAddress
     })
   }
 }

@@ -1,23 +1,22 @@
 #!/usr/bin/env node
-import * as route53 from 'aws-cdk-lib/aws-route53';
-import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as acm from 'aws-cdk-lib/aws-certificatemanager';
-import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
-import * as targets from 'aws-cdk-lib/aws-route53-targets';
-import * as cloudfront_origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import { CfnOutput, Duration, RemovalPolicy, SecretValue, Stack } from 'aws-cdk-lib';
-import * as iam from 'aws-cdk-lib/aws-iam';
-import { Construct } from 'constructs';
-import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
-import * as codebuild from 'aws-cdk-lib/aws-codebuild';
-import * as codepipelineActions from 'aws-cdk-lib/aws-codepipeline-actions';
-
+import { CanonicalUserPrincipal, Effect, PolicyStatement } from 'aws-cdk-lib/aws-iam';
+import { Cors, LambdaIntegration, LogGroupLogDestination, RestApi } from "aws-cdk-lib/aws-apigateway";
+import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
+import { AllowedMethods, Distribution, OriginAccessIdentity, SecurityPolicyProtocol, ViewerProtocolPolicy } from 'aws-cdk-lib/aws-cloudfront';
+import { S3Origin } from 'aws-cdk-lib/aws-cloudfront-origins';
+import { BuildSpec, LinuxBuildImage, Project, Source } from 'aws-cdk-lib/aws-codebuild';
+import { Artifact, Pipeline } from 'aws-cdk-lib/aws-codepipeline';
+import { CodeBuildAction, GitHubSourceAction, S3DeployAction } from 'aws-cdk-lib/aws-codepipeline-actions';
 import { Architecture, Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
-import * as path from "path"
-
-import { Cors, LambdaIntegration, LogGroupLogDestination, RestApi } from "aws-cdk-lib/aws-apigateway";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
+import { ARecord, HostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
+import { ApiGateway, CloudFrontTarget } from 'aws-cdk-lib/aws-route53-targets';
+import { BlockPublicAccess, Bucket } from 'aws-cdk-lib/aws-s3';
+import { Construct } from 'constructs';
+
+import * as path from "path"
 
 export interface StaticSiteProps {
   domainName: string;
@@ -37,19 +36,19 @@ export class StaticSite extends Construct {
   constructor(parent: Stack, name: string, props: StaticSiteProps) {
     super(parent, name);
 
-    const zone = route53.HostedZone.fromLookup(this, 'Zone', { domainName: props.domainName });
+    const zone = HostedZone.fromLookup(this, 'Zone', { domainName: props.domainName });
     const siteDomain = props.domainName;
     const siteWithWWW = `www.${siteDomain}`;
-    const cloudfrontOai = new cloudfront.OriginAccessIdentity(this, 'CloudfrontOAI', {
+    const cloudfrontOai = new OriginAccessIdentity(this, 'CloudfrontOAI', {
       comment: `OAI for ${name}: ${siteDomain}`
     });
     new CfnOutput(this, 'Site', { value: 'https://' + siteDomain });
 
-    // Content bucket
-    const siteBucket = new s3.Bucket(this, 'SiteBucket', {
+    // Site bucket
+    const siteBucket = new Bucket(this, 'SiteBucket', {
       bucketName: siteDomain,
       publicReadAccess: false,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
 
       /**
        * The default removal policy is RETAIN, which means that cdk destroy will not attempt to delete
@@ -66,10 +65,10 @@ export class StaticSite extends Construct {
     });
 
     // WWW redirect bucket
-    const wwwRedirectBucket = new s3.Bucket(this, 'WWWRedirectSiteBucket', {
+    const wwwRedirectBucket = new Bucket(this, 'WWWRedirectSiteBucket', {
       bucketName: siteWithWWW,
       publicReadAccess: false,
-      // blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      websiteRedirect: { hostName: siteDomain },
 
       /**
        * The default removal policy is RETAIN, which means that cdk destroy will not attempt to delete
@@ -78,27 +77,26 @@ export class StaticSite extends Construct {
        */
       removalPolicy: RemovalPolicy.DESTROY,
 
-      // /**
-      //  * For sample purposes only, if you create an S3 bucket then populate it, stack destruction fails.  This
-      //  * setting will enable full cleanup of the demo.
-      //  */
-      // autoDeleteObjects: true,
-      websiteRedirect: { hostName: siteDomain },
+      /**
+       * For sample purposes only, if you create an S3 bucket then populate it, stack destruction fails.  This
+       * setting will enable full cleanup of the demo.
+       */
+      autoDeleteObjects: true,
     });
 
     // Grant access to cloudfront
-    siteBucket.addToResourcePolicy(new iam.PolicyStatement({
+    siteBucket.addToResourcePolicy(new PolicyStatement({
       actions: ['s3:GetObject'],
       resources: [siteBucket.arnForObjects('*')],
-      principals: [new iam.CanonicalUserPrincipal(cloudfrontOai.cloudFrontOriginAccessIdentityS3CanonicalUserId)]
+      principals: [new CanonicalUserPrincipal(cloudfrontOai.cloudFrontOriginAccessIdentityS3CanonicalUserId)]
     }));
     new CfnOutput(this, 'Bucket', { value: siteBucket.bucketName });
 
     // Grant access to cloudfront
-    siteBucket.addToResourcePolicy(new iam.PolicyStatement({
+    siteBucket.addToResourcePolicy(new PolicyStatement({
       actions: ['s3:GetObject'],
       resources: [siteBucket.arnForObjects('*')],
-      principals: [new iam.CanonicalUserPrincipal(cloudfrontOai.cloudFrontOriginAccessIdentityS3CanonicalUserId)]
+      principals: [new CanonicalUserPrincipal(cloudfrontOai.cloudFrontOriginAccessIdentityS3CanonicalUserId)]
     }));
     new CfnOutput(this, 'WWWRedirectBucket', { value: wwwRedirectBucket.bucketName });
 
@@ -116,19 +114,19 @@ export class StaticSite extends Construct {
 
     // TLS certificate
     const wildcardSiteDomain = `*.${siteDomain}`;
-    const certificate = new acm.Certificate(certificateStack, 'Certificate', {
+    const certificate = new Certificate(certificateStack, 'Certificate', {
       domainName: siteDomain,
       subjectAlternativeNames: [wildcardSiteDomain],
-      validation: acm.CertificateValidation.fromDns(zone),
+      validation: CertificateValidation.fromDns(zone),
     });
     new CfnOutput(this, 'SiteCertificate', { value: certificate.certificateArn });
     
     // CloudFront distribution
-    const distribution = new cloudfront.Distribution(this, 'SiteDistribution', {
+    const distribution = new Distribution(this, 'SiteDistribution', {
       certificate: certificate,
       defaultRootObject: "index.html",
       domainNames: [siteDomain],
-      minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
+      minimumProtocolVersion: SecurityPolicyProtocol.TLS_V1_2_2021,
       errorResponses:[
         {
           httpStatus: 403,
@@ -138,20 +136,19 @@ export class StaticSite extends Construct {
         }
       ],
       defaultBehavior: {
-        origin: new cloudfront_origins.S3Origin(siteBucket, { originAccessIdentity: cloudfrontOai }),
+        origin: new S3Origin(siteBucket, { originAccessIdentity: cloudfrontOai }),
         compress: true,
-        allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        allowedMethods: AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+        viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
       }
     });
     new CfnOutput(this, 'DistributionId', { value: distribution.distributionId });
 
     // CloudFront distribution for www redirect bucket
-    const wwwRedirectDistribution = new cloudfront.Distribution(this, 'WWWRedirectDistribution', {
+    const wwwRedirectDistribution = new Distribution(this, 'WWWRedirectDistribution', {
       certificate: certificate,
-      // defaultRootObject: "index.html",
       domainNames: [siteWithWWW],
-      minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
+      minimumProtocolVersion: SecurityPolicyProtocol.TLS_V1_2_2021,
       errorResponses:[
         {
           httpStatus: 403,
@@ -161,25 +158,25 @@ export class StaticSite extends Construct {
         }
       ],
       defaultBehavior: {
-        origin: new cloudfront_origins.S3Origin(wwwRedirectBucket, { originAccessIdentity: cloudfrontOai }),
+        origin: new S3Origin(wwwRedirectBucket, { originAccessIdentity: cloudfrontOai }),
         compress: true,
-        allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        allowedMethods: AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+        viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
       }
     });
     new CfnOutput(this, 'WWWRedirectDistributionId', { value: wwwRedirectDistribution.distributionId });
 
     // Route 53 alias record for the CloudFront distribution
-    new route53.ARecord(this, 'SiteAliasRecord', {
+    new ARecord(this, 'SiteAliasRecord', {
       recordName: siteDomain,
-      target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(distribution)),
+      target: RecordTarget.fromAlias(new CloudFrontTarget(distribution)),
       zone
     });
 
     // Route 53 alias record for the CloudFront www redirect distribution
-    new route53.ARecord(this, 'WWWRedirectAliasRecord', {
+    new ARecord(this, 'WWWRedirectAliasRecord', {
       recordName: siteWithWWW,
-      target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(wwwRedirectDistribution)),
+      target: RecordTarget.fromAlias(new CloudFrontTarget(wwwRedirectDistribution)),
       zone
     });
 
@@ -202,8 +199,8 @@ export class StaticSite extends Construct {
       logRetention: RetentionDays.ONE_DAY
     });
     contactFormEmailFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
+      new PolicyStatement({
+        effect: Effect.ALLOW,
         actions: [
           'ses:SendEmail',
           'ses:SendRawEmail',
@@ -218,9 +215,9 @@ export class StaticSite extends Construct {
 
     // API Gateway certificate
     const apiDomainName = `api.${siteDomain}`;
-    const apiGatewayCertificate = new acm.Certificate(this, 'ApiGatewayCertificate', {
+    const apiGatewayCertificate = new Certificate(this, 'ApiGatewayCertificate', {
       domainName: apiDomainName,
-      validation: acm.CertificateValidation.fromDns(zone),
+      validation: CertificateValidation.fromDns(zone),
     });
     new CfnOutput(this, 'ApiCertificate', { value: apiGatewayCertificate.certificateArn });
 
@@ -248,10 +245,10 @@ export class StaticSite extends Construct {
     });
 
     // Add record for API
-    new route53.ARecord(this, 'CustomDomainAliasRecord', {
+    new ARecord(this, 'CustomDomainAliasRecord', {
       recordName: apiDomainName,
       zone,
-      target: route53.RecordTarget.fromAlias(new targets.ApiGateway(api))
+      target: RecordTarget.fromAlias(new ApiGateway(api))
     });
     new CfnOutput(this, "Api", { value: api.restApiName });
     new CfnOutput(this, "ApiAliasUrl", { value: `https://${apiDomainName}` });
@@ -263,19 +260,19 @@ export class StaticSite extends Construct {
       .addMethod('POST', new LambdaIntegration(contactFormEmailFunction));
 
     // AWS CodePipeline pipeline
-    const pipeline = new codepipeline.Pipeline(this, "SitePipeline", {
+    const pipeline = new Pipeline(this, "SitePipeline", {
       pipelineName: props.domainName,
     });
 
     // Build
-    const project = new codebuild.Project(this, 'FrontEndBuild', {
-      source: codebuild.Source.gitHub({
+    const project = new Project(this, 'FrontEndBuild', {
+      source: Source.gitHub({
         owner: props.owner, 
         repo: props.repo
       }),
-      buildSpec: codebuild.BuildSpec.fromSourceFilename('./buildspec.yaml'),
+      buildSpec: BuildSpec.fromSourceFilename('./buildspec.yaml'),
       environment: {
-        buildImage: codebuild.LinuxBuildImage.STANDARD_5_0,
+        buildImage: LinuxBuildImage.STANDARD_5_0,
         privileged: true
       },
       environmentVariables: {
@@ -286,8 +283,8 @@ export class StaticSite extends Construct {
     });
 
     // Source
-    const sourceOutput = new codepipeline.Artifact();
-    const sourceAction = new codepipelineActions.GitHubSourceAction({
+    const sourceOutput = new Artifact();
+    const sourceAction = new GitHubSourceAction({
       actionName: 'GithubSource',
       output: sourceOutput,
       owner: props.owner,
@@ -299,8 +296,8 @@ export class StaticSite extends Construct {
       actions: [sourceAction]
     });
 
-    const buildOutput = new codepipeline.Artifact();
-    const buildAction = new codepipelineActions.CodeBuildAction({
+    const buildOutput = new Artifact();
+    const buildAction = new CodeBuildAction({
       actionName: 'CodeBuild',
       project,
       input: sourceOutput,
@@ -312,7 +309,7 @@ export class StaticSite extends Construct {
     });
 
     // Deploy
-    const deployAction = new codepipelineActions.S3DeployAction({
+    const deployAction = new S3DeployAction({
       actionName: 'S3Deploy',
       bucket: siteBucket,
       input: buildOutput

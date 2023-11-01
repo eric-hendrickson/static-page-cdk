@@ -1,8 +1,8 @@
 {
-  "name": "next-js-cdk",
+  "name": "static-page-cdk",
   "version": "0.1.0",
   "bin": {
-    "next-js-cdk": "bin/next-js-cdk.js"
+    "static-page-cdk": "bin/static-page-cdk.js"
   },
   "scripts": {
     "build": "tsc",

@@ -15,7 +15,7 @@ require('dotenv').config();
  *   }
  * }
 **/
-export class NextJsCdkStack extends cdk.Stack {
+export class StaticPageCdkStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
-import { NextJsCdkStack } from '../lib';
+import { StaticPageCdkStack } from '../lib';
 require('dotenv').config();
 
 const app = new cdk.App();
@@ -15,11 +15,7 @@ const formatDomainForStackName = (domainName: string | undefined) => {
     domainName.charAt(periodIndex + 1).toUpperCase() + domainName.slice(periodIndex + 2);
 }
 
-new NextJsCdkStack(app, `${formatDomainForStackName(process.env.DOMAIN)}-NextJsCdkStack`, {
-  /* If you don't specify 'env', this stack will be environment-agnostic.
-   * Account/Region-dependent features and context lookups will not work,
-   * but a single synthesized template can be deployed anywhere. */
-
+new StaticPageCdkStack(app, `${formatDomainForStackName(process.env.DOMAIN)}-StaticPageCdkStack`, {
   /* Make sure you put the appropriate variables in a .env file (using .env.bk as a guide), 
    * or this stack will not work. */
   env: { 

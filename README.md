@@ -1,10 +1,10 @@
-# Welcome to the Static NextJS CDK Stack Builder
+# Welcome to the Static Page CDK Stack Builder
 
 Want to skip Vercel and thus cut out the middleman by deploying directly on AWS? This is an attempt to create a CDK template that can be used to deploy a static Next.js app. Assuming you have a valid `buildspec.yaml` (with that spelling) in your project, you should be able to use this to deploy a your static Next.js app!
 
 ## What do I need in order to use this?
 
-* A Next.js project Github repository (other repositories are not supported at the moment) with static hosting (dynamic hosting requires a server).
+* A Next.js project Github repository (other repositories are not supported at the moment) for a static page (note: this has only been tested with a NextJS app that utilizes static hosting). Full stack apps will NOT work with this implementation.
 * As mentioned before, a valid `buildspec.yaml` with the `yaml` suffix within that repository
 * An AWS account
 
@@ -16,7 +16,7 @@ Want to skip Vercel and thus cut out the middleman by deploying directly on AWS?
 * A certificate from Amazon Certificate Manager that can handle parent and wildcard domains (e.g., if the domain is `example.com`, it can support `example.com` and of its subdomains)
 * An AWS Lambda function that will use SES to send an email, provided you give a valid name, email, and message (SES email address will have to be validated by domain; see below)
 * An API Gateway endpoint that will allow the site to trigger said Lambda function
-* A certificate for said API Gateway endpoint that has a simplified domain (for example, if your domain is `example.com`, then the API you would be calling in the NextJS static site would be `api.example.com`)
+* A certificate for said API Gateway endpoint that has a simplified domain (for example, if your domain is `example.com`, then the API you would be calling in the static site would be `api.example.com`)
 * Route 53 records for the parent domain, for `www` traffic, and for the API (Route 53 hosting zone will have to be manually configured first)
 * A CodePipeline that will build and deploy your static NextJS website provided it is hosted on Github and it has a valid `buildspec.yaml`
 
@@ -41,6 +41,10 @@ Similarly, in the future I'd like to allow for a user to be able to set up diffe
 ## How to run this CDK stack
 
 After you've done all of the above, this stack should be ready to deploy. You can then run `npm run build` followed by `cdk deploy --all` (unless your default region is `us-east-1`, in which case you only need to run `cdk deploy`).
+
+## If you ever need to delete this stack...
+
+If your AWS region is `us-east-1`, you can ignore this, but if it isn't, then you will have to delete the stack created in said region FIRST, *then* delete the stack that was created in `us-east-1`. Trying to delete both simultaneously or deleting the one in `us-east-1` first can cause problems should you ever want to redeploy.
 
 ## Useful commands
 

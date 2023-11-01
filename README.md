@@ -26,6 +26,7 @@ Similarly, in the future I'd like to allow for a user to be able to set up diffe
 
 ## Before this will work in AWS...
 
+- After cloning the repository, run `npm install` within the directory.
 - You need to download and configure the AWS CLI and set up SSO Login (installation instructions [here](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)) and set up SSO Login (I assume that most people who are using this will know the basics of AWS).
     - And of course you are going to want to run `cdk bootstrap` for both `us-east-1` and whatever other region you're using.
 - You need to manually create your hosted zone in Route 53. I know that technically CloudFormation _could_ create a hosted zone, but since this CloudFormation stack uses domain-based validation, it's a much better idea to set up your hosted zone and set up all your DNS stuff beforehand (note: if you're using DNS forwarding, set that up **before** creating your CloudFormation stack). With that in mind, please note that the stack WILL create an alias record within your hosted zone, so you don't need to worry about that.

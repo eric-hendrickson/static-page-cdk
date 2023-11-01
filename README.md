@@ -4,9 +4,10 @@ Want to skip Vercel and thus cut out the middleman by deploying directly on AWS?
 
 ## What do I need in order to use this?
 
-* A Next.js project Github repository (other repositories are not supported at the moment) for a static page (note: this has only been tested with a NextJS app that utilizes static hosting). Full stack apps will NOT work with this implementation.
+* A domain
+* A GitHub repository for a static page (other version control sites are not supported at the moment). Full stack apps will NOT work with this implementation. (Note: this has only been tested with a NextJS app that utilizes static hosting.)
 * As mentioned before, a valid `buildspec.yaml` with the `yaml` suffix within that repository
-* An AWS account
+* An AWS account with A Route53 hosted zone associated with previously mentioned domain, and with that domain validated on SES
 
 ## What this CDK stack will create
 
